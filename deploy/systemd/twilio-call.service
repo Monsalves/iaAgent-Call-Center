@@ -1,0 +1,19 @@
+[Unit]
+Description=Twilio Call Azure Realtime bridge
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/srv/azure-realtime-voice-apps/current
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/twilio-call.env
+ExecStart=/usr/bin/npm run start:twilio
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

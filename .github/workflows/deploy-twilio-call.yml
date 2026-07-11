@@ -1,0 +1,92 @@
+name: Deploy Twilio Call
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check sources
+        run: npm run check
+
+      - name: Sync project to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          source: "apps,shared,deploy,package.json,package-lock.json,README.md,.gitignore"
+          target: ${{ secrets.DEPLOY_PATH }}
+
+      - name: Write runtime env on VM
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            sudo tee /etc/twilio-call.env >/dev/null <<'EOF'
+            TWILIO_CALL_HOST=127.0.0.1
+            TWILIO_CALL_PORT=8090
+            PUBLIC_BASE_URL=${{ secrets.PUBLIC_BASE_URL }}
+            TWILIO_CALL_TRIGGER_TOKEN=${{ secrets.TWILIO_CALL_TRIGGER_TOKEN }}
+            AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }}
+            AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY }}
+            AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
+            AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION }}
+            TWILIO_CALL_VOICE=${{ secrets.TWILIO_CALL_VOICE }}
+            TWILIO_CALL_SYSTEM_PROMPT=${{ secrets.TWILIO_CALL_SYSTEM_PROMPT }}
+            TWILIO_CALL_VAD_THRESHOLD=${{ secrets.TWILIO_CALL_VAD_THRESHOLD }}
+            TWILIO_CALL_VAD_PREFIX_PADDING_MS=${{ secrets.TWILIO_CALL_VAD_PREFIX_PADDING_MS }}
+            TWILIO_CALL_VAD_SILENCE_DURATION_MS=${{ secrets.TWILIO_CALL_VAD_SILENCE_DURATION_MS }}
+            TWILIO_CALL_BARGE_IN_DEBOUNCE_MS=${{ secrets.TWILIO_CALL_BARGE_IN_DEBOUNCE_MS }}
+            TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}
+            TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}
+            TWILIO_FROM_NUMBER=${{ secrets.TWILIO_FROM_NUMBER }}
+            TWILIO_TO_NUMBER=${{ secrets.TWILIO_TO_NUMBER }}
+            TWILIO_VOICE_WEBHOOK_PATH=${{ secrets.TWILIO_VOICE_WEBHOOK_PATH }}
+            TWILIO_STATUS_WEBHOOK_PATH=${{ secrets.TWILIO_STATUS_WEBHOOK_PATH }}
+            TWILIO_STREAM_PATH=${{ secrets.TWILIO_STREAM_PATH }}
+            REDIS_URL=${{ secrets.REDIS_URL }}
+            BULLMQ_QUEUE_NAME=${{ secrets.BULLMQ_QUEUE_NAME }}
+            MAX_CONCURRENT_CALLS=${{ secrets.MAX_CONCURRENT_CALLS }}
+            MAX_CALL_ATTEMPTS=${{ secrets.MAX_CALL_ATTEMPTS }}
+            CALL_RETRY_BASE_MS=${{ secrets.CALL_RETRY_BASE_MS }}
+            EOF
+            sudo chmod 600 /etc/twilio-call.env
+
+      - name: Restart service on VM
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_PATH }}"
+            npm ci --omit=dev
+            docker compose -f deploy/redis-compose.yml up -d
+            sudo systemctl restart twilio-call.service
+            sleep 2
+            curl -f http://127.0.0.1:8090/health

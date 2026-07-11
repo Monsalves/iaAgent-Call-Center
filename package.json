@@ -1,0 +1,21 @@
+{
+  "name": "ia-agent-call-center",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node apps/twilio-call/server.js",
+    "start:twilio": "node apps/twilio-call/server.js",
+    "dev": "node --watch apps/twilio-call/server.js",
+    "check": "node --check apps/twilio-call/server.js && node --check apps/twilio-call/realtime.js && node --check apps/twilio-call/config.js && node --check apps/twilio-call/store.js && node --check apps/twilio-call/csv.js && node --check apps/twilio-call/bullmq-queue.js && node --check shared/audio.js && node --check shared/env.js && node --check shared/azureRealtimeSession.js"
+  },
+  "dependencies": {
+    "alawmulaw": "^6.0.0",
+    "bullmq": "^5.80.1",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "ioredis": "^5.11.1",
+    "openai": "^6.44.0",
+    "ws": "^8.18.3"
+  }
+}
