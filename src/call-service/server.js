@@ -5,7 +5,7 @@ import { URL } from "node:url";
 import express from "express";
 import { WebSocketServer } from "ws";
 
-import { decodeTwilioPayload, encodeTwilioPayload, resamplePcm16 } from "../../shared/audio.js";
+import { decodeTwilioPayload, encodeTwilioPayload, resamplePcm16 } from "../shared/audio.js";
 import { config } from "./config.js";
 import { createRealtimeSession } from "./realtime.js";
 import { CampaignStore } from "./store.js";

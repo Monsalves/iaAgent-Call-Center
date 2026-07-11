@@ -33,7 +33,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
-          source: "apps,shared,deploy,package.json,package-lock.json,README.md,.gitignore"
+          source: "src,infra,docs,package.json,package-lock.json,README.md,.gitignore"
           target: ${{ secrets.DEPLOY_PATH }}
 
       - name: Write runtime env on VM
@@ -86,7 +86,7 @@ jobs:
             set -euo pipefail
             cd "${{ secrets.DEPLOY_PATH }}"
             npm ci --omit=dev
-            docker compose -f deploy/redis-compose.yml up -d
+            docker compose -f infra/redis-compose.yml up -d
             sudo systemctl restart twilio-call.service
             sleep 2
             curl -f http://127.0.0.1:8090/health

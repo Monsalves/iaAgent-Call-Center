@@ -1,4 +1,4 @@
-import { AzureRealtimeSession } from "../../shared/azureRealtimeSession.js";
+import { AzureRealtimeSession } from "../shared/azureRealtimeSession.js";
 import { config } from "./config.js";
 
 function normalizeContext(context) {

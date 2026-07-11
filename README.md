@@ -2,6 +2,21 @@
 
 MVP de llamadas salientes automatizadas con Twilio, Azure OpenAI Realtime y Redis/BullMQ.
 
+## Estructura
+
+```text
+src/
+  call-service/       API HTTP, worker BullMQ, bridge Twilio y agente Realtime
+  shared/             Audio, variables de entorno y sesion Azure reutilizables
+infra/
+  nginx/              Proxy HTTPS y WebSocket
+  systemd/            Servicio de produccion
+  redis-compose.yml   Redis persistente para BullMQ
+docs/
+  deployment.md       Guia de instalacion en VM
+.github/workflows/    Despliegue continuo a VM
+```
+
 ## Arquitectura
 
 - **Twilio:** crea llamadas salientes, entrega callbacks y Media Streams.
@@ -22,7 +37,7 @@ MVP de llamadas salientes automatizadas con Twilio, Azure OpenAI Realtime y Redi
 
 ```bash
 npm install
-docker compose -f deploy/redis-compose.yml up -d
+docker compose -f infra/redis-compose.yml up -d
 cp .env.example .env
 npm start
 ```
@@ -51,7 +66,7 @@ Los endpoints administrativos usan `Authorization: Bearer <TWILIO_CALL_TRIGGER_T
 
 ## Despliegue
 
-La configuracion para Nginx, systemd, Redis y GitHub Actions esta en `deploy/` y `.github/workflows/`. Sigue `deploy/docs/vm-setup.md` para una VM Ubuntu.
+La configuracion para Nginx, systemd y Redis esta en `infra/`; CI/CD esta en `.github/workflows/`. Sigue `docs/deployment.md` para una VM Ubuntu.
 
 ## Verificacion
 

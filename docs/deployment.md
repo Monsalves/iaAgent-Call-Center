@@ -71,10 +71,10 @@ Luego GitHub Actions lo actualizara con los secrets del repo.
 
 ## 5. Nginx
 
-Edita `deploy/nginx/twilio-call.conf` y reemplaza `calls.example.com` por tu dominio.
+Edita `infra/nginx/twilio-call.conf` y reemplaza `calls.example.com` por tu dominio.
 
 ```bash
-sudo cp /srv/azure-realtime-voice-apps/current/deploy/nginx/twilio-call.conf \
+sudo cp /srv/azure-realtime-voice-apps/current/infra/nginx/twilio-call.conf \
   /etc/nginx/sites-available/twilio-call.conf
 sudo ln -s /etc/nginx/sites-available/twilio-call.conf /etc/nginx/sites-enabled/twilio-call.conf
 sudo nginx -t
@@ -95,10 +95,10 @@ sudo certbot renew --dry-run
 
 ## 7. systemd
 
-Edita `deploy/systemd/twilio-call.service` si necesitas otro usuario o ruta.
+Edita `infra/systemd/twilio-call.service` si necesitas otro usuario o ruta.
 
 ```bash
-sudo cp /srv/azure-realtime-voice-apps/current/deploy/systemd/twilio-call.service \
+sudo cp /srv/azure-realtime-voice-apps/current/infra/systemd/twilio-call.service \
   /etc/systemd/system/twilio-call.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now twilio-call.service
@@ -116,7 +116,7 @@ Inicia Redis antes del servicio Node.js:
 
 ```bash
 cd /srv/azure-realtime-voice-apps/current
-sudo docker compose -f deploy/redis-compose.yml up -d
+sudo docker compose -f infra/redis-compose.yml up -d
 ```
 
 ```bash
