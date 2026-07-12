@@ -458,6 +458,8 @@ twilioWss.on("connection", async (socket, request) => {
           }
         });
         await session.start();
+        const greetingRequested = session.createResponse();
+        logTiming("initial_greeting_requested", { streamSid, greetingRequested });
         return;
       }
 
