@@ -18,7 +18,7 @@ jobs:
             cd "${{ vars.DEPLOY_PATH || '/srv/azure-realtime-voice-apps/current' }}"
             node --input-type=module <<'NODE'
             import fs from "node:fs";
-            const data = JSON.parse(fs.readFileSync("data/campaign-store.json", "utf8"));
+            const data = JSON.parse(fs.readFileSync("src/data/campaign-store.json", "utf8"));
             const campaigns = [...data.campaigns].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
             for (const [index, campaign] of campaigns.entries()) {
               const contacts = data.contacts.filter((item) => item.campaignId === campaign.id);
