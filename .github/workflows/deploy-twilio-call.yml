@@ -39,7 +39,7 @@ jobs:
             export DEBIAN_FRONTEND=noninteractive
 
             sudo apt-get update
-            sudo apt-get install -y ca-certificates curl docker.io docker-compose nginx
+            sudo apt-get install -y ca-certificates curl docker.io docker-compose nginx certbot python3-certbot-nginx
 
             if ! command -v node >/dev/null 2>&1 || [ "$(node --version | cut -d. -f1)" != "v22" ]; then
               curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
@@ -109,3 +109,56 @@ jobs:
             sudo systemctl restart twilio-call.service
             sleep 2
             curl -f http://127.0.0.1:8090/health
+
+      - name: Configure HTTPS reverse proxy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ vars.DEPLOY_HOST }}
+          username: ${{ vars.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ vars.DEPLOY_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            public_host="${{ vars.PUBLIC_BASE_URL }}"
+            public_host="${public_host#https://}"
+            public_host="${public_host#http://}"
+            public_host="${public_host%/}"
+
+            if [ ! -f "/etc/letsencrypt/live/${public_host}/fullchain.pem" ]; then
+              sudo certbot certonly --nginx --non-interactive --agree-tos \
+                --register-unsafely-without-email -d "${public_host}"
+            fi
+
+            sudo tee /etc/nginx/sites-available/twilio-call >/dev/null <<EOF
+            server {
+                listen 80;
+                server_name ${public_host};
+                return 301 https://\$host\$request_uri;
+            }
+
+            server {
+                listen 443 ssl;
+                server_name ${public_host};
+                ssl_certificate /etc/letsencrypt/live/${public_host}/fullchain.pem;
+                ssl_certificate_key /etc/letsencrypt/live/${public_host}/privkey.pem;
+                client_max_body_size 2m;
+
+                location / {
+                    proxy_pass http://127.0.0.1:8090;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade \$http_upgrade;
+                    proxy_set_header Connection "upgrade";
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \$scheme;
+                    proxy_read_timeout 3600s;
+                }
+            }
+            EOF
+
+            sudo ln -sfn /etc/nginx/sites-available/twilio-call /etc/nginx/sites-enabled/twilio-call
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo nginx -t
+            sudo systemctl reload nginx
+            curl -f "https://${public_host}/health"
