@@ -59,6 +59,7 @@ export class AzureRealtimeSession extends EventEmitter {
       this.emit("debug", "Azure Realtime session updated");
     });
     this.session.on("input_audio_buffer.speech_started", (event) => {
+      this.emit("speech-started", { eventId: event?.event_id ?? null, at: Date.now() });
       this.emit("client-event", { type: "barge-in" });
       this.emit("barge-in", {
         eventId: event?.event_id ?? null,
@@ -72,6 +73,7 @@ export class AzureRealtimeSession extends EventEmitter {
       this.responseActive = true;
       this.cancelPending = false;
       this.lastResponseId = event.response?.id ?? this.lastResponseId;
+      this.emit("response-started", { responseId: this.lastResponseId, at: Date.now() });
     });
     this.session.on("response.output_audio.delta", (event) => {
       this.responseActive = true;
@@ -88,6 +90,14 @@ export class AzureRealtimeSession extends EventEmitter {
       this.lastResponseId = event.response_id ?? this.lastResponseId;
       this.emit("assistantText", event.delta);
     });
+    this.session.on("response.output_audio_transcript.done", (event) => {
+      const text = String(event.transcript || "").trim();
+      if (text) this.emit("transcript-turn", { role: "assistant", text, turnId: event.item_id || event.response_id || null, at: Date.now() });
+    });
+    this.session.on("conversation.item.input_audio_transcription.completed", (event) => {
+      const text = String(event.transcript || "").trim();
+      if (text) this.emit("transcript-turn", { role: "user", text, turnId: event.item_id || null, at: Date.now() });
+    });
     this.session.on("response.done", (event) => {
       this.responseActive = false;
       this.cancelPending = false;
@@ -96,6 +106,7 @@ export class AzureRealtimeSession extends EventEmitter {
         type: "response-done",
         status: event.response?.status || "unknown"
       });
+      this.emit("response-done", { responseId: this.lastResponseId, status: event.response?.status || "unknown", at: Date.now() });
     });
     this.session.on("response.function_call_arguments.done", async (event) => {
       await this.handleFunctionCall(event);

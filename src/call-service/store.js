@@ -178,11 +178,13 @@ export class CampaignStore {
     return clone(this.data.attempts.find((attempt) => attempt.twilioCallSid === callSid) || null);
   }
 
-  appendTranscript(attemptId, role, text) {
+  appendTranscript(attemptId, role, text, turnId = null) {
     if (!text) return;
     this.mutate((data) => {
       const attempt = data.attempts.find((item) => item.id === attemptId);
-      if (attempt && attempt.status !== "completed") attempt.transcript.push({ role, text, at: new Date().toISOString() });
+      if (attempt && (!turnId || !attempt.transcript.some((turn) => turn.turnId === turnId))) {
+        attempt.transcript.push({ role, text, turnId, at: new Date().toISOString() });
+      }
       return attempt || {};
     });
   }

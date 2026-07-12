@@ -135,6 +135,7 @@ const campaignQueue = new BullMqCampaignQueue({
   maxAttempts: config.maxCallAttempts,
   retryBaseMs: config.retryBaseMs
 });
+const forcedAttemptResults = new Map();
 
 function attachSessionHandlers(session, emitAudio, closeSocket) {
   session.on("debug", (message) => {
@@ -333,7 +334,9 @@ app.post(config.twilioStatusWebhookPath, (request, response) => {
   const attempt = store.findAttemptByCallSid(callSid) || (request.query.attemptId ? store.snapshot().attempts.find((item) => item.id === request.query.attemptId) : null);
   const status = String(request.body?.CallStatus || "").toLowerCase();
   if (attempt && ["completed", "busy", "no-answer", "failed", "canceled"].includes(status)) {
-    const resultCode = { "no-answer": "no_answer", busy: "busy", failed: "failed", canceled: "provider_error", completed: "completed" }[status];
+    const forcedResultCode = forcedAttemptResults.get(attempt.id);
+    forcedAttemptResults.delete(attempt.id);
+    const resultCode = forcedResultCode || { "no-answer": "no_answer", busy: "busy", failed: "failed", canceled: "provider_error", completed: "completed" }[status];
     const retryDelayMs = resultCode === "provider_error" ? config.retryBaseMs * 2 ** (attempt.attemptNumber - 1) : 0;
     const completedAttempt = store.finishAttempt(attempt.id, { resultCode, durationSeconds: Number(request.body?.CallDuration || 0), errorMessage: request.body?.ErrorCode || null, retryDelayMs });
     campaignQueue.completeAttempt(completedAttempt);
@@ -389,6 +392,22 @@ twilioWss.on("connection", async (socket, request) => {
   let session = null;
   let interruptionPending = false;
   let lastBargeInAt = 0;
+  let attemptId = "";
+  let silenceTimer = null;
+
+  const clearSilenceTimer = () => {
+    if (silenceTimer) clearTimeout(silenceTimer);
+    silenceTimer = null;
+  };
+  const scheduleSilenceTimeout = () => {
+    clearSilenceTimer();
+    silenceTimer = setTimeout(() => {
+      silenceTimer = null;
+      if (attemptId) forcedAttemptResults.set(attemptId, "silence_timeout");
+      logTiming("contact_silence_timeout", { streamSid, attemptId, timeoutMs: config.contactSilenceTimeoutMs });
+      if (socket.readyState === socket.OPEN) socket.close(1000, "contact silence timeout");
+    }, config.contactSilenceTimeoutMs);
+  };
 
   socket.on("message", async (rawMessage) => {
     try {
@@ -435,8 +454,13 @@ twilioWss.on("connection", async (socket, request) => {
           },
           (code, reason) => socket.close(code, reason)
         );
-        const attemptId = decodeURIComponent(customParameters.attemptId ?? "");
-        if (attemptId) session.on("assistantText", (text) => store.appendTranscript(attemptId, "assistant", text));
+        attemptId = decodeURIComponent(customParameters.attemptId ?? "");
+        if (attemptId) session.on("transcript-turn", ({ role, text, turnId }) => store.appendTranscript(attemptId, role, text, turnId));
+        session.on("speech-started", clearSilenceTimer);
+        session.on("response-started", clearSilenceTimer);
+        session.on("response-done", ({ status }) => {
+          if (status === "completed") scheduleSilenceTimeout();
+        });
         session.on("barge-in", ({ at }) => {
           if (at - lastBargeInAt < config.bargeInDebounceMs) {
             logTiming("speech_started_ignored", { streamSid, detectedAtMs: at });
@@ -458,6 +482,7 @@ twilioWss.on("connection", async (socket, request) => {
           }
         });
         await session.start();
+        scheduleSilenceTimeout();
         return;
       }
 
@@ -469,6 +494,7 @@ twilioWss.on("connection", async (socket, request) => {
       }
 
       if (payload.event === "stop") {
+        clearSilenceTimer();
         interruptionPending = false;
         socket.close(1000, "twilio stop");
       }
@@ -479,10 +505,12 @@ twilioWss.on("connection", async (socket, request) => {
   });
 
   socket.on("close", async () => {
+    clearSilenceTimer();
     await session?.close().catch(() => undefined);
   });
 
   socket.on("error", async (error) => {
+    clearSilenceTimer();
     console.error("[twilio-media-stream] websocket error", error);
     await session?.close().catch(() => undefined);
   });
