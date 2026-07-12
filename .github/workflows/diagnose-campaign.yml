@@ -1,0 +1,42 @@
+name: Diagnose Campaigns
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read anonymized campaign evidence
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ vars.DEPLOY_HOST }}
+          username: ${{ vars.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ vars.DEPLOY_PORT || 22 }}
+          script: |
+            cd "${{ vars.DEPLOY_PATH || '/srv/azure-realtime-voice-apps/current' }}"
+            node --input-type=module <<'NODE'
+            import fs from "node:fs";
+            const data = JSON.parse(fs.readFileSync("data/campaign-store.json", "utf8"));
+            const campaigns = [...data.campaigns].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
+            for (const [index, campaign] of campaigns.entries()) {
+              const contacts = data.contacts.filter((item) => item.campaignId === campaign.id);
+              const attempts = data.attempts.filter((item) => item.campaignId === campaign.id);
+              const events = data.events.filter((item) => item.campaignId === campaign.id);
+              const aliases = new Map(contacts.map((item, i) => [item.id, `contact-${i + 1}`]));
+              const statusCounts = contacts.reduce((counts, item) => ({ ...counts, [item.status]: (counts[item.status] || 0) + 1 }), {});
+              console.log(JSON.stringify({
+                campaign: `campaign-${index + 1}`, name: campaign.name, status: campaign.status,
+                createdAt: campaign.createdAt, updatedAt: campaign.updatedAt, contacts: contacts.length, statusCounts,
+                lifecycle: events.filter((item) => item.type.startsWith("campaign_") || item.type === "contacts_imported").map((item) => ({ type: item.type, at: item.at })),
+                attempts: attempts.map((item) => ({
+                  contact: aliases.get(item.contactId), attemptNumber: item.attemptNumber, status: item.status,
+                  resultCode: item.resultCode, durationSeconds: item.durationSeconds, startedAt: item.startedAt,
+                  endedAt: item.endedAt, error: item.errorMessage || null, transcriptTurns: item.transcript?.length || 0,
+                  roles: [...new Set((item.transcript || []).map((turn) => turn.role))],
+                  completeTurnFormat: (item.transcript || []).every((turn) => Boolean(turn.turnId))
+                }))
+              }, null, 2));
+            }
+            NODE
