@@ -1,6 +1,6 @@
 import http from "node:http";
 import path from "node:path";
-import { URL } from "node:url";
+import { fileURLToPath, URL } from "node:url";
 
 import express from "express";
 import { WebSocketServer } from "ws";
@@ -13,6 +13,7 @@ import { BullMqCampaignQueue } from "./bullmq-queue.js";
 import { parseContactsCsv } from "./csv.js";
 
 const app = express();
+const publicDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), "public");
 const server = http.createServer(app);
 const twilioWss = new WebSocketServer({
   noServer: true,
@@ -232,6 +233,8 @@ app.get("/", (_, response) => {
     ]
   });
 });
+
+app.get("/ui", (_, response) => response.sendFile(path.join(publicDirectory, "index.html")));
 
 app.get("/health", (_, response) => {
   response.json({
