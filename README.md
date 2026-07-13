@@ -59,8 +59,8 @@ Completa las credenciales de Azure y Twilio en `.env`. Nunca subas ese archivo a
 ## Flujo de campana
 
 1. Crea una campana: `POST /api/campaigns`.
-2. Importa contactos CSV mediante `POST /api/campaigns/:campaignId/contacts/csv` con columnas `nombre,telefono`.
-3. Inicia con `POST /api/campaigns/:campaignId/start`.
+2. Importa contactos CSV mediante `POST /api/campaigns/:campaignId/contacts/csv` con columnas `nombre,telefono`. La importacion solo persiste los contactos; todavia no los entrega al worker.
+3. Inicia con `POST /api/campaigns/:campaignId/start`. En este momento se crean o reconstruyen los jobs BullMQ pendientes.
 4. Pausa o reanuda con `/pause` y `/resume`.
 5. Elimina una campana y libera sus jobs con `DELETE /api/campaigns/:campaignId`.
 6. Consulta la trazabilidad en `GET /api/campaigns/:campaignId`.

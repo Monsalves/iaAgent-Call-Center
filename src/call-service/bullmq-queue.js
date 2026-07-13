@@ -88,6 +88,14 @@ export class BullMqCampaignQueue {
   }
 
   async enqueueContacts(campaignId, contacts) {
+    for (const contact of contacts) {
+      const existingJob = await this.queue.getJob(contact.id);
+      if (!existingJob) continue;
+      const state = await existingJob.getState();
+      if (["completed", "failed"].includes(state)) {
+        await existingJob.remove();
+      }
+    }
     await this.queue.addBulk(contacts.map((contact) => ({
       name: "outbound-call",
       data: { campaignId, contactId: contact.id },

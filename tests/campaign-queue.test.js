@@ -115,3 +115,51 @@ test("deleting a running campaign resolves its waiter and clears queued jobs", a
   assert.equal(deleted.id, campaign.id);
   assert.equal(store.getCampaign(campaign.id), null);
 });
+
+test("rebuilds terminal BullMQ jobs before starting a pending contact", async () => {
+  let removed = false;
+  let addedJobs = null;
+  const contact = { id: "contact-1" };
+  const queue = Object.create(BullMqCampaignQueue.prototype);
+  Object.assign(queue, {
+    maxAttempts: 3,
+    retryBaseMs: 5000,
+    queue: {
+      getJob: async (jobId) => {
+        assert.equal(jobId, contact.id);
+        return {
+          getState: async () => "completed",
+          remove: async () => { removed = true; }
+        };
+      },
+      addBulk: async (jobs) => { addedJobs = jobs; }
+    }
+  });
+
+  await queue.enqueueContacts("campaign-1", [contact]);
+
+  assert.equal(removed, true);
+  assert.equal(addedJobs.length, 1);
+  assert.equal(addedJobs[0].data.campaignId, "campaign-1");
+  assert.equal(addedJobs[0].data.contactId, contact.id);
+});
+
+test("does not remove a BullMQ job that is still waiting", async () => {
+  let removed = false;
+  const queue = Object.create(BullMqCampaignQueue.prototype);
+  Object.assign(queue, {
+    maxAttempts: 3,
+    retryBaseMs: 5000,
+    queue: {
+      getJob: async () => ({
+        getState: async () => "waiting",
+        remove: async () => { removed = true; }
+      }),
+      addBulk: async () => undefined
+    }
+  });
+
+  await queue.enqueueContacts("campaign-1", [{ id: "contact-1" }]);
+
+  assert.equal(removed, false);
+});
