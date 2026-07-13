@@ -51,6 +51,8 @@ Completa las credenciales de Azure y Twilio en `.env`. Nunca subas ese archivo a
 | `PUBLIC_BASE_URL` | URL HTTPS publica del servicio. |
 | `REDIS_URL` | Redis para BullMQ; por defecto `redis://127.0.0.1:6379`. |
 | `MAX_CONCURRENT_CALLS` | Llamadas activas maximas; parte en `1`. |
+| `CALL_STATUS_POLL_INTERVAL_MS` | Intervalo de respaldo para consultar el estado en Twilio; por defecto `5000`. |
+| `CALL_STATUS_TIMEOUT_MS` | Limite para liberar un cupo sin estado terminal; por defecto `300000`. |
 | `AZURE_OPENAI_*` | Endpoint, clave y deployment Azure Realtime. |
 | `TWILIO_*` | Credenciales, numero origen, rutas y token de API. |
 
@@ -64,6 +66,8 @@ Completa las credenciales de Azure y Twilio en `.env`. Nunca subas ese archivo a
 
 Los endpoints administrativos usan `Authorization: Bearer <TWILIO_CALL_TRIGGER_TOKEN>` cuando el token esta configurado.
 
+El worker reconcilia los intentos con la API de Twilio cuando se pierde un callback y recupera campanas `running` despues de reiniciar el servicio. Asi, una llamada atascada no bloquea indefinidamente el unico cupo de concurrencia.
+
 ## Despliegue
 
 La configuracion para Nginx, systemd y Redis esta en `infra/`; CI/CD esta en `.github/workflows/`. Sigue `docs/deployment.md` para una VM Ubuntu.
@@ -72,5 +76,6 @@ La configuracion para Nginx, systemd y Redis esta en `infra/`; CI/CD esta en `.g
 
 ```bash
 npm run check
+npm test
 curl http://127.0.0.1:8090/health
 ```
