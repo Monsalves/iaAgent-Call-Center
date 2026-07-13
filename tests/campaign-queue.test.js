@@ -7,6 +7,22 @@ import test from "node:test";
 import { BullMqCampaignQueue, mapTwilioStatus } from "../src/call-service/bullmq-queue.js";
 import { parseContactsCsv } from "../src/call-service/csv.js";
 import { CampaignStore } from "../src/call-service/store.js";
+import { AzureRealtimeSession } from "../src/shared/azureRealtimeSession.js";
+
+test("requests an initial assistant response when the realtime socket is open", () => {
+  const sent = [];
+  const realtimeSession = Object.create(AzureRealtimeSession.prototype);
+  Object.assign(realtimeSession, {
+    closed: false,
+    session: {
+      socket: { readyState: 1, OPEN: 1 },
+      send: (event) => sent.push(event)
+    }
+  });
+
+  assert.equal(realtimeSession.requestInitialResponse(), true);
+  assert.deepEqual(sent, [{ type: "response.create" }]);
+});
 
 function createAttempt(prefix, maxAttempts = 3) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), prefix));

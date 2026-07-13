@@ -55,7 +55,7 @@ export const config = {
   vadThreshold: numberFromEnv(
     process.env.TWILIO_CALL_VAD_THRESHOLD,
     process.env.AZURE_OPENAI_VAD_THRESHOLD,
-    0.62
+    0.4
   ),
   vadPrefixPaddingMs: numberFromEnv(
     process.env.TWILIO_CALL_VAD_PREFIX_PADDING_MS,
@@ -72,7 +72,7 @@ export const config = {
     process.env.BARGE_IN_DEBOUNCE_MS,
     450
   ),
-  contactSilenceTimeoutMs: numberFromEnv(process.env.CONTACT_SILENCE_TIMEOUT_MS, 10000),
+  contactSilenceTimeoutMs: numberFromEnv(process.env.CONTACT_SILENCE_TIMEOUT_MS, 20000),
   twilioAccountSid: firstNonEmpty(process.env.TWILIO_ACCOUNT_SID),
   twilioAuthToken: firstNonEmpty(process.env.TWILIO_AUTH_TOKEN),
   twilioFromNumber: firstNonEmpty(process.env.TWILIO_FROM_NUMBER),

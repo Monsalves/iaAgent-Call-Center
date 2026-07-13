@@ -302,7 +302,9 @@ app.get("/health", (_, response) => {
     maxCallAttempts: config.maxCallAttempts,
     shortCallThresholdSeconds: config.shortCallThresholdSeconds,
     callStatusPollIntervalMs: config.callStatusPollIntervalMs,
-    callStatusTimeoutMs: config.callStatusTimeoutMs
+    callStatusTimeoutMs: config.callStatusTimeoutMs,
+    vadThreshold: config.vadThreshold,
+    contactSilenceTimeoutMs: config.contactSilenceTimeoutMs
   });
 });
 
@@ -467,6 +469,7 @@ twilioWss.on("connection", async (socket, request) => {
   let lastBargeInAt = 0;
   let attemptId = "";
   let silenceTimer = null;
+  let inboundMediaChunks = 0;
 
   const clearSilenceTimer = () => {
     if (silenceTimer) clearTimeout(silenceTimer);
@@ -560,6 +563,14 @@ twilioWss.on("connection", async (socket, request) => {
       }
 
       if (payload.event === "media" && session) {
+        inboundMediaChunks += 1;
+        if (inboundMediaChunks === 1) {
+          logTiming("inbound_audio_started", {
+            streamSid,
+            attemptId,
+            payloadBytes: Buffer.byteLength(payload.media.payload || "", "base64")
+          });
+        }
         const inboundPcm8k = decodeTwilioPayload(payload.media.payload);
         const inboundPcm24k = resamplePcm16(inboundPcm8k, 8000, 24000);
         await session.receiveAudioChunk(inboundPcm24k);
@@ -567,6 +578,7 @@ twilioWss.on("connection", async (socket, request) => {
       }
 
       if (payload.event === "stop") {
+        logTiming("inbound_audio_stopped", { streamSid, attemptId, inboundMediaChunks });
         clearSilenceTimer();
         interruptionPending = false;
         socket.close(1000, "twilio stop");
