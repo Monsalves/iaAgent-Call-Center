@@ -318,7 +318,6 @@ app.post("/api/campaigns/:campaignId/contacts/csv", requireTriggerAuth, async (r
   try {
     const contacts = parseContactsCsv(request.body);
     const created = store.addContacts(request.params.campaignId, contacts);
-    await campaignQueue.enqueueContacts(request.params.campaignId, created);
     return response.status(201).json({ imported: created.length, campaignId: request.params.campaignId });
   } catch (error) {
     const status = /Redis|Connection|connect|ECONNREFUSED/i.test(error.message) ? 503 : 400;
