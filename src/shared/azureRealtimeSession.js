@@ -30,12 +30,8 @@ export class AzureRealtimeSession extends EventEmitter {
 
   async start() {
     let createdResolve;
-    let updatedResolve;
     const createdPromise = new Promise((resolve) => {
       createdResolve = resolve;
-    });
-    const updatedPromise = new Promise((resolve) => {
-      updatedResolve = resolve;
     });
 
     this.session = await OpenAIRealtimeWS.create(this.client, {
@@ -61,7 +57,6 @@ export class AzureRealtimeSession extends EventEmitter {
     });
     this.session.on("session.updated", () => {
       this.emit("debug", "Azure Realtime session updated");
-      updatedResolve();
     });
     this.session.on("input_audio_buffer.speech_started", (event) => {
       this.emit("speech-started", { eventId: event?.event_id ?? null, at: Date.now() });
@@ -173,26 +168,6 @@ export class AzureRealtimeSession extends EventEmitter {
         }
       }
     });
-
-    await Promise.race([
-      updatedPromise,
-      new Promise((resolve) => setTimeout(resolve, 1500))
-    ]);
-    this.requestInitialResponse();
-  }
-
-  requestInitialResponse() {
-    if (
-      this.closed ||
-      !this.session ||
-      !this.session.socket ||
-      this.session.socket.readyState !== this.session.socket.OPEN
-    ) {
-      return false;
-    }
-
-    this.session.send({ type: "response.create" });
-    return true;
   }
 
   async receiveAudioChunk(pcm24kBuffer) {
