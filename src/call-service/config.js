@@ -89,5 +89,7 @@ export const config = {
   maxConcurrentCalls: numberFromEnv(process.env.MAX_CONCURRENT_CALLS, 1),
   dispatchIntervalMs: numberFromEnv(process.env.CAMPAIGN_DISPATCH_INTERVAL_MS, 1000),
   maxCallAttempts: numberFromEnv(process.env.MAX_CALL_ATTEMPTS, 3),
-  retryBaseMs: numberFromEnv(process.env.CALL_RETRY_BASE_MS, 5000)
+  retryBaseMs: numberFromEnv(process.env.CALL_RETRY_BASE_MS, 5000),
+  callStatusPollIntervalMs: numberFromEnv(process.env.CALL_STATUS_POLL_INTERVAL_MS, 5000),
+  callStatusTimeoutMs: numberFromEnv(process.env.CALL_STATUS_TIMEOUT_MS, 300000)
 };

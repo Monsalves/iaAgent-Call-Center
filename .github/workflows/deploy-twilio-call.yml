@@ -26,6 +26,9 @@ jobs:
       - name: Check sources
         run: npm run check
 
+      - name: Run tests
+        run: npm test
+
       - name: Bootstrap Ubuntu VM
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -81,6 +84,8 @@ jobs:
             TWILIO_ACCOUNT_SID=${{ vars.TWILIO_ACCOUNT_SID }}
             TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}
             TWILIO_FROM_NUMBER=${{ vars.TWILIO_FROM_NUMBER }}
+            CALL_STATUS_POLL_INTERVAL_MS=5000
+            CALL_STATUS_TIMEOUT_MS=300000
             EOF
             sudo chmod 600 /etc/twilio-call.env
 

@@ -126,15 +126,39 @@ async function createTwilioCall({ to, name, context, campaignId = "", contactId 
   return body;
 }
 
+async function getTwilioCallStatus(callSid) {
+  requireTwilioConfig();
+  const auth = Buffer.from(`${config.twilioAccountSid}:${config.twilioAuthToken}`).toString("base64");
+  const response = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${config.twilioAccountSid}/Calls/${callSid}.json`,
+    {
+      headers: { Authorization: `Basic ${auth}` },
+      signal: AbortSignal.timeout(10000)
+    }
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.message || `Twilio call status failed with status ${response.status}`);
+  }
+  return {
+    status: body.status,
+    duration: body.duration,
+    errorMessage: body.error_message || null
+  };
+}
+
 const store = new CampaignStore(path.resolve(config.projectRoot, config.dataFile));
 const campaignQueue = new BullMqCampaignQueue({
   store,
   createCall: ({ phone, ...metadata }) => createTwilioCall({ ...metadata, to: phone, name: metadata.name, context: JSON.stringify(metadata.context) }),
+  getCallStatus: getTwilioCallStatus,
   redisUrl: config.redisUrl,
   queueName: config.bullMqQueueName,
   maxConcurrentCalls: config.maxConcurrentCalls,
   maxAttempts: config.maxCallAttempts,
-  retryBaseMs: config.retryBaseMs
+  retryBaseMs: config.retryBaseMs,
+  callStatusPollIntervalMs: config.callStatusPollIntervalMs,
+  callStatusTimeoutMs: config.callStatusTimeoutMs
 });
 const forcedAttemptResults = new Map();
 
@@ -249,7 +273,9 @@ app.get("/health", (_, response) => {
     ),
     campaignStore: config.dataFile,
     redisConfigured: Boolean(config.redisUrl),
-    maxConcurrentCalls: config.maxConcurrentCalls
+    maxConcurrentCalls: config.maxConcurrentCalls,
+    callStatusPollIntervalMs: config.callStatusPollIntervalMs,
+    callStatusTimeoutMs: config.callStatusTimeoutMs
   });
 });
 
