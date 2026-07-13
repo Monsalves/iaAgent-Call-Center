@@ -3,7 +3,12 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 const INITIAL_DATA = { version: 1, campaigns: [], contacts: [], attempts: [], events: [] };
-const TERMINAL_CONTACT_STATES = new Set(["completed", "no_answer", "invalid_number", "error"]);
+const TERMINAL_CONTACT_STATES = new Set(["completed", "no_answer", "invalid_number", "incomplete", "error"]);
+const RETRYABLE_RESULT_CODES = new Set(["provider_error", "no_answer", "busy", "short_call"]);
+
+export function isRetryableResult(resultCode) {
+  return RETRYABLE_RESULT_CODES.has(resultCode);
+}
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -182,7 +187,7 @@ export class CampaignStore {
       attempt.resultCode = resultCode;
       attempt.errorMessage = errorMessage;
       if (contact) {
-        const retryable = resultCode === "provider_error" && contact.attempts < attempt.maxAttempts;
+        const retryable = isRetryableResult(resultCode) && contact.attempts < attempt.maxAttempts;
         contact.status = retryable ? "pending" : mapContactStatus(resultCode);
         contact.nextAttemptAt = retryable ? new Date(now.getTime() + retryDelayMs).toISOString() : null;
         contact.updatedAt = now.toISOString();
@@ -231,5 +236,6 @@ function mapContactStatus(resultCode) {
   if (["completed", "answered"].includes(resultCode)) return "completed";
   if (["no_answer", "busy", "voicemail"].includes(resultCode)) return "no_answer";
   if (["invalid_number", "failed"].includes(resultCode)) return "invalid_number";
+  if (resultCode === "short_call") return "incomplete";
   return "error";
 }

@@ -1,16 +1,26 @@
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 
+import { isRetryableResult } from "./store.js";
+
 const TERMINAL_TWILIO_STATUSES = new Set(["completed", "busy", "no-answer", "failed", "canceled"]);
 
-export function mapTwilioStatus(status) {
+export function mapTwilioStatus(status, durationSeconds = null, shortCallThresholdSeconds = 8) {
+  const normalizedStatus = String(status || "").toLowerCase();
+  if (
+    normalizedStatus === "completed" &&
+    durationSeconds !== null &&
+    Number(durationSeconds) < shortCallThresholdSeconds
+  ) {
+    return "short_call";
+  }
   return {
     completed: "completed",
     busy: "busy",
     "no-answer": "no_answer",
     failed: "failed",
     canceled: "provider_error"
-  }[String(status || "").toLowerCase()] || null;
+  }[normalizedStatus] || null;
 }
 
 export class BullMqCampaignQueue {
@@ -24,6 +34,7 @@ export class BullMqCampaignQueue {
     maxConcurrentCalls,
     maxAttempts,
     retryBaseMs,
+    shortCallThresholdSeconds = 8,
     callStatusPollIntervalMs = 5000,
     callStatusTimeoutMs = 300000
   }) {
@@ -33,6 +44,7 @@ export class BullMqCampaignQueue {
     this.cancelCall = cancelCall;
     this.maxAttempts = maxAttempts;
     this.retryBaseMs = retryBaseMs;
+    this.shortCallThresholdSeconds = shortCallThresholdSeconds;
     this.callStatusPollIntervalMs = callStatusPollIntervalMs;
     this.callStatusTimeoutMs = callStatusTimeoutMs;
     this.waiters = new Map();
@@ -219,7 +231,7 @@ export class BullMqCampaignQueue {
       }
       const finalAttempt = await this.waitForAttempt(claimed.attempt.id, call.sid);
       this.store.completeCampaignIfDone(campaignId);
-      if (this.contactNeedsRetry(campaignId, contactId) || finalAttempt?.resultCode === "provider_error") {
+      if (this.contactNeedsRetry(campaignId, contactId)) {
         throw new Error("Retryable provider failure.");
       }
     } catch (error) {
@@ -275,10 +287,18 @@ export class BullMqCampaignQueue {
             const call = await this.getCallStatus(callSid);
             const status = String(call?.status || "").toLowerCase();
             if (TERMINAL_TWILIO_STATUSES.has(status)) {
+              const resultCode = mapTwilioStatus(
+                status,
+                call.duration,
+                this.shortCallThresholdSeconds
+              );
               const reconciledAttempt = this.store.finishAttempt(attemptId, {
-                resultCode: mapTwilioStatus(status),
+                resultCode,
                 durationSeconds: Number(call.duration || 0),
-                errorMessage: call.errorMessage || null
+                errorMessage: call.errorMessage || null,
+                retryDelayMs: isRetryableResult(resultCode)
+                  ? this.retryBaseMs * 2 ** (storedAttempt.attemptNumber - 1)
+                  : 0
               });
               this.completeAttempt(reconciledAttempt);
               return;
