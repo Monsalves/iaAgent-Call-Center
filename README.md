@@ -73,7 +73,7 @@ Los endpoints administrativos usan `Authorization: Bearer <TWILIO_CALL_TRIGGER_T
 
 El worker reconcilia los intentos con la API de Twilio cuando se pierde un callback y recupera campanas `running` despues de reiniciar el servicio. Asi, una llamada atascada no bloquea indefinidamente el unico cupo de concurrencia.
 
-Al conectarse el Media Stream, el agente crea inmediatamente su primera respuesta y saluda segun el prompt de la campana. Luego, el VAD genera las respuestas siguientes cuando detecta la voz del contacto.
+Al conectarse el Media Stream, el agente espera a que el VAD detecte la voz del contacto. Cuando la persona habla primero, Azure Realtime crea la respuesta del asistente automaticamente.
 
 Los resultados `no-answer`, `busy` y las llamadas contestadas que duran menos de `SHORT_CALL_THRESHOLD_SECONDS` se reintentan una vez. Al agotar dos intentos, `no-answer` y `busy` quedan como `no_answer`; los cortes tempranos quedan como `incomplete`. Los numeros invalidos, las cancelaciones administrativas y las llamadas completadas normalmente no se reintentan.
 
