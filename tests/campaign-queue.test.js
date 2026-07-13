@@ -8,12 +8,12 @@ import { BullMqCampaignQueue, mapTwilioStatus } from "../src/call-service/bullmq
 import { parseContactsCsv } from "../src/call-service/csv.js";
 import { CampaignStore } from "../src/call-service/store.js";
 
-function createAttempt(prefix) {
+function createAttempt(prefix, maxAttempts = 3) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const store = new CampaignStore(path.join(directory, "campaigns.json"));
   const campaign = store.createCampaign({ name: "Queue test" });
   store.addContacts(campaign.id, parseContactsCsv("nombre,telefono\nAna,+56911111111\n"));
-  const claimed = store.claimNextContact(campaign.id, 3);
+  const claimed = store.claimNextContact(campaign.id, maxAttempts);
   return { store, campaign, claimed };
 }
 
@@ -36,6 +36,32 @@ test("maps terminal Twilio statuses", () => {
   assert.equal(mapTwilioStatus("failed"), "failed");
   assert.equal(mapTwilioStatus("canceled"), "provider_error");
   assert.equal(mapTwilioStatus("ringing"), null);
+  assert.equal(mapTwilioStatus("completed", 7, 8), "short_call");
+  assert.equal(mapTwilioStatus("completed", 8, 8), "completed");
+});
+
+test("retries no-answer once and then marks the contact as no answer", () => {
+  const { store, campaign, claimed } = createAttempt("call-center-no-answer-", 2);
+
+  store.finishAttempt(claimed.attempt.id, { resultCode: "no_answer" });
+  assert.equal(store.getCampaign(campaign.id).contacts[0].status, "pending");
+
+  const second = store.claimNextContact(campaign.id, 2);
+  store.finishAttempt(second.attempt.id, { resultCode: "no_answer" });
+  assert.equal(store.getCampaign(campaign.id).contacts[0].status, "no_answer");
+  assert.equal(store.getCampaign(campaign.id).contacts[0].attempts, 2);
+});
+
+test("retries an early hangup once and then marks it incomplete", () => {
+  const { store, campaign, claimed } = createAttempt("call-center-short-call-", 2);
+
+  store.finishAttempt(claimed.attempt.id, { resultCode: "short_call", durationSeconds: 3 });
+  assert.equal(store.getCampaign(campaign.id).contacts[0].status, "pending");
+
+  const second = store.claimNextContact(campaign.id, 2);
+  store.finishAttempt(second.attempt.id, { resultCode: "short_call", durationSeconds: 2 });
+  assert.equal(store.getCampaign(campaign.id).contacts[0].status, "incomplete");
+  assert.equal(store.getCampaign(campaign.id).contacts[0].attempts, 2);
 });
 
 test("reconciles a missing callback by polling Twilio", async () => {

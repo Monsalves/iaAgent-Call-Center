@@ -8,8 +8,8 @@ import { WebSocketServer } from "ws";
 import { decodeTwilioPayload, encodeTwilioPayload, resamplePcm16 } from "../shared/audio.js";
 import { config } from "./config.js";
 import { createRealtimeSession } from "./realtime.js";
-import { CampaignStore } from "./store.js";
-import { BullMqCampaignQueue } from "./bullmq-queue.js";
+import { CampaignStore, isRetryableResult } from "./store.js";
+import { BullMqCampaignQueue, mapTwilioStatus } from "./bullmq-queue.js";
 import { parseContactsCsv } from "./csv.js";
 
 const app = express();
@@ -181,6 +181,7 @@ const campaignQueue = new BullMqCampaignQueue({
   maxConcurrentCalls: config.maxConcurrentCalls,
   maxAttempts: config.maxCallAttempts,
   retryBaseMs: config.retryBaseMs,
+  shortCallThresholdSeconds: config.shortCallThresholdSeconds,
   callStatusPollIntervalMs: config.callStatusPollIntervalMs,
   callStatusTimeoutMs: config.callStatusTimeoutMs
 });
@@ -298,6 +299,8 @@ app.get("/health", (_, response) => {
     campaignStore: config.dataFile,
     redisConfigured: Boolean(config.redisUrl),
     maxConcurrentCalls: config.maxConcurrentCalls,
+    maxCallAttempts: config.maxCallAttempts,
+    shortCallThresholdSeconds: config.shortCallThresholdSeconds,
     callStatusPollIntervalMs: config.callStatusPollIntervalMs,
     callStatusTimeoutMs: config.callStatusTimeoutMs
   });
@@ -399,9 +402,16 @@ app.post(config.twilioStatusWebhookPath, (request, response) => {
   if (attempt && ["completed", "busy", "no-answer", "failed", "canceled"].includes(status)) {
     const forcedResultCode = forcedAttemptResults.get(attempt.id);
     forcedAttemptResults.delete(attempt.id);
-    const resultCode = forcedResultCode || { "no-answer": "no_answer", busy: "busy", failed: "failed", canceled: "provider_error", completed: "completed" }[status];
-    const retryDelayMs = resultCode === "provider_error" ? config.retryBaseMs * 2 ** (attempt.attemptNumber - 1) : 0;
-    const completedAttempt = store.finishAttempt(attempt.id, { resultCode, durationSeconds: Number(request.body?.CallDuration || 0), errorMessage: request.body?.ErrorCode || null, retryDelayMs });
+    const durationSeconds = Number(request.body?.CallDuration || 0);
+    const resultCode = forcedResultCode || mapTwilioStatus(
+      status,
+      durationSeconds,
+      config.shortCallThresholdSeconds
+    );
+    const retryDelayMs = isRetryableResult(resultCode)
+      ? config.retryBaseMs * 2 ** (attempt.attemptNumber - 1)
+      : 0;
+    const completedAttempt = store.finishAttempt(attempt.id, { resultCode, durationSeconds, errorMessage: request.body?.ErrorCode || null, retryDelayMs });
     campaignQueue.completeAttempt(completedAttempt);
   }
   response.json({ status: "ok" });
