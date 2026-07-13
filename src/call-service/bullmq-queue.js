@@ -18,6 +18,7 @@ export class BullMqCampaignQueue {
     store,
     createCall,
     getCallStatus,
+    cancelCall,
     redisUrl,
     queueName,
     maxConcurrentCalls,
@@ -29,11 +30,13 @@ export class BullMqCampaignQueue {
     this.store = store;
     this.createCall = createCall;
     this.getCallStatus = getCallStatus;
+    this.cancelCall = cancelCall;
     this.maxAttempts = maxAttempts;
     this.retryBaseMs = retryBaseMs;
     this.callStatusPollIntervalMs = callStatusPollIntervalMs;
     this.callStatusTimeoutMs = callStatusTimeoutMs;
     this.waiters = new Map();
+    this.deletedCampaignIds = new Set();
     this.connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
     this.connection.on("error", (error) => console.error("[bullmq] redis connection error", error.message));
     this.queue = new Queue(queueName, { connection: this.connection });
@@ -124,6 +127,63 @@ export class BullMqCampaignQueue {
     return this.start(campaignId);
   }
 
+  async deleteCampaign(campaignId) {
+    const campaign = this.store.getCampaign(campaignId);
+    if (!campaign) return null;
+    this.deletedCampaignIds.add(campaignId);
+
+    for (const attempt of campaign.attempts.filter((item) => item.status !== "completed")) {
+      if (attempt.twilioCallSid) {
+        await this.cancelCallIfActive(attempt.twilioCallSid);
+      }
+      const completedAttempt = this.store.finishAttempt(attempt.id, {
+        resultCode: "canceled_by_user",
+        errorMessage: "Campaign deleted by an administrator."
+      });
+      this.completeAttempt(completedAttempt);
+    }
+
+    await this.removeCampaignJobs(campaignId);
+    return this.store.deleteCampaign(campaignId);
+  }
+
+  async cancelCallIfActive(callSid) {
+    if (!this.cancelCall) return;
+    if (this.getCallStatus) {
+      try {
+        const call = await this.getCallStatus(callSid);
+        if (TERMINAL_TWILIO_STATUSES.has(String(call?.status || "").toLowerCase())) return;
+      } catch (error) {
+        console.warn("[bullmq] Twilio status check before cancellation failed", {
+          callSid,
+          error: error.message
+        });
+      }
+    }
+    try {
+      await this.cancelCall(callSid);
+    } catch (error) {
+      console.warn("[bullmq] Twilio call cancellation failed", { callSid, error: error.message });
+    }
+  }
+
+  async removeCampaignJobs(campaignId) {
+    await this.queue.waitUntilReady();
+    const jobs = await this.queue.getJobs([
+      "wait",
+      "delayed",
+      "paused",
+      "prioritized",
+      "failed",
+      "completed"
+    ]);
+    await Promise.all(jobs
+      .filter((job) => job.data?.campaignId === campaignId)
+      .map((job) => job.remove().catch((error) => {
+        console.warn("[bullmq] campaign job removal failed", { jobId: job.id, error: error.message });
+      })));
+  }
+
   async process(job) {
     const { campaignId, contactId } = job.data;
     const campaign = this.store.getCampaign(campaignId);
@@ -140,7 +200,15 @@ export class BullMqCampaignQueue {
         attemptId: claimed.attempt.id,
         campaignPrompt: campaign.prompt
       });
-      this.store.markCallCreated(claimed.attempt.id, call.sid);
+      if (this.deletedCampaignIds.has(campaignId) || !this.store.getCampaign(campaignId)) {
+        await this.cancelCallIfActive(call.sid);
+        return;
+      }
+      const markedAttempt = this.store.markCallCreated(claimed.attempt.id, call.sid);
+      if (!markedAttempt) {
+        await this.cancelCallIfActive(call.sid);
+        return;
+      }
       const finalAttempt = await this.waitForAttempt(claimed.attempt.id, call.sid);
       this.store.completeCampaignIfDone(campaignId);
       if (this.contactNeedsRetry(campaignId, contactId) || finalAttempt?.resultCode === "provider_error") {
@@ -158,6 +226,7 @@ export class BullMqCampaignQueue {
   }
 
   completeAttempt(attempt) {
+    if (!attempt) return;
     const resolve = this.waiters.get(attempt.id);
     if (resolve) {
       this.waiters.delete(attempt.id);

@@ -147,11 +147,35 @@ async function getTwilioCallStatus(callSid) {
   };
 }
 
+async function cancelTwilioCall(callSid) {
+  requireTwilioConfig();
+  const auth = Buffer.from(`${config.twilioAccountSid}:${config.twilioAuthToken}`).toString("base64");
+  const payload = new URLSearchParams({ Status: "canceled" });
+  const response = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${config.twilioAccountSid}/Calls/${callSid}.json`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: payload.toString(),
+      signal: AbortSignal.timeout(10000)
+    }
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.message || `Twilio call cancellation failed with status ${response.status}`);
+  }
+  return body;
+}
+
 const store = new CampaignStore(path.resolve(config.projectRoot, config.dataFile));
 const campaignQueue = new BullMqCampaignQueue({
   store,
   createCall: ({ phone, ...metadata }) => createTwilioCall({ ...metadata, to: phone, name: metadata.name, context: JSON.stringify(metadata.context) }),
   getCallStatus: getTwilioCallStatus,
+  cancelCall: cancelTwilioCall,
   redisUrl: config.redisUrl,
   queueName: config.bullMqQueueName,
   maxConcurrentCalls: config.maxConcurrentCalls,
@@ -305,6 +329,17 @@ app.post("/api/campaigns/:campaignId/contacts/csv", requireTriggerAuth, async (r
 app.get("/api/campaigns/:campaignId", requireTriggerAuth, (request, response) => {
   const campaign = store.getCampaign(request.params.campaignId);
   return campaign ? response.json({ campaign }) : response.status(404).json({ error: "Campaign not found." });
+});
+
+app.delete("/api/campaigns/:campaignId", requireTriggerAuth, async (request, response) => {
+  const campaign = store.getCampaign(request.params.campaignId);
+  if (!campaign) return response.status(404).json({ error: "Campaign not found." });
+  try {
+    const deleted = await campaignQueue.deleteCampaign(campaign.id);
+    return response.json({ deleted });
+  } catch (error) {
+    return response.status(503).json({ error: `Could not delete campaign: ${error.message}` });
+  }
 });
 
 app.post("/api/campaigns/:campaignId/start", requireTriggerAuth, async (request, response) => {

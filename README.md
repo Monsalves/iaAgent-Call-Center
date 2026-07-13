@@ -62,7 +62,8 @@ Completa las credenciales de Azure y Twilio en `.env`. Nunca subas ese archivo a
 2. Importa contactos CSV mediante `POST /api/campaigns/:campaignId/contacts/csv` con columnas `nombre,telefono`.
 3. Inicia con `POST /api/campaigns/:campaignId/start`.
 4. Pausa o reanuda con `/pause` y `/resume`.
-5. Consulta la trazabilidad en `GET /api/campaigns/:campaignId`.
+5. Elimina una campana y libera sus jobs con `DELETE /api/campaigns/:campaignId`.
+6. Consulta la trazabilidad en `GET /api/campaigns/:campaignId`.
 
 Los endpoints administrativos usan `Authorization: Bearer <TWILIO_CALL_TRIGGER_TOKEN>` cuando el token esta configurado.
 
