@@ -84,6 +84,24 @@ export class CampaignStore {
     });
   }
 
+  deleteCampaign(campaignId) {
+    return this.mutate((data) => {
+      const campaign = this.findCampaign(data, campaignId);
+      if (!campaign) return null;
+      const deleted = {
+        id: campaign.id,
+        name: campaign.name,
+        contacts: data.contacts.filter((contact) => contact.campaignId === campaignId).length,
+        attempts: data.attempts.filter((attempt) => attempt.campaignId === campaignId).length
+      };
+      data.campaigns = data.campaigns.filter((item) => item.id !== campaignId);
+      data.contacts = data.contacts.filter((contact) => contact.campaignId !== campaignId);
+      data.attempts = data.attempts.filter((attempt) => attempt.campaignId !== campaignId);
+      data.events = data.events.filter((event) => event.campaignId !== campaignId);
+      return deleted;
+    });
+  }
+
   getCampaign(campaignId) {
     const data = this.snapshot();
     const campaign = this.findCampaign(data, campaignId);
