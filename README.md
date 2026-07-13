@@ -52,6 +52,8 @@ Completa las credenciales de Azure y Twilio en `.env`. Nunca subas ese archivo a
 | `REDIS_URL` | Redis para BullMQ; por defecto `redis://127.0.0.1:6379`. |
 | `MAX_CONCURRENT_CALLS` | Llamadas activas maximas; parte en `1`. |
 | `MAX_CALL_ATTEMPTS` | Intentos totales por contacto; por defecto `2`. |
+| `TWILIO_CALL_VAD_THRESHOLD` | Sensibilidad de deteccion de voz; por defecto `0.40`. |
+| `CONTACT_SILENCE_TIMEOUT_MS` | Espera despues de cada respuesta antes de cerrar por silencio; por defecto `20000`. |
 | `SHORT_CALL_THRESHOLD_SECONDS` | Duracion bajo la cual una llamada contestada se considera corte temprano; por defecto `8`. |
 | `CALL_STATUS_POLL_INTERVAL_MS` | Intervalo de respaldo para consultar el estado en Twilio; por defecto `5000`. |
 | `CALL_STATUS_TIMEOUT_MS` | Limite para liberar un cupo sin estado terminal; por defecto `300000`. |
@@ -70,6 +72,8 @@ Completa las credenciales de Azure y Twilio en `.env`. Nunca subas ese archivo a
 Los endpoints administrativos usan `Authorization: Bearer <TWILIO_CALL_TRIGGER_TOKEN>` cuando el token esta configurado.
 
 El worker reconcilia los intentos con la API de Twilio cuando se pierde un callback y recupera campanas `running` despues de reiniciar el servicio. Asi, una llamada atascada no bloquea indefinidamente el unico cupo de concurrencia.
+
+Al conectarse el Media Stream, el agente crea inmediatamente su primera respuesta y saluda segun el prompt de la campana. Luego, el VAD genera las respuestas siguientes cuando detecta la voz del contacto.
 
 Los resultados `no-answer`, `busy` y las llamadas contestadas que duran menos de `SHORT_CALL_THRESHOLD_SECONDS` se reintentan una vez. Al agotar dos intentos, `no-answer` y `busy` quedan como `no_answer`; los cortes tempranos quedan como `incomplete`. Los numeros invalidos, las cancelaciones administrativas y las llamadas completadas normalmente no se reintentan.
 
